@@ -70,12 +70,18 @@ export default function Home() {
       addLog(`Chat list received: ${chatList.length} chats`);
     });
 
-    socket.on('messages', (data: ChatsEvent) =>
-      setMessages((prev) => ({ ...prev, [data.chatId]: data.messages }))
-    );
-
+     // incoming messages from WA
     socket.on('message', (newMessage: Message) => {
       const chatId = newMessage.fromMe ? newMessage.to : newMessage.from;
+      setMessages((prev) => ({
+        ...prev,
+        [chatId]: [...(prev[chatId] || []), newMessage],
+      }));
+    });
+
+    // 🔥 add this for messages you send
+    socket.on('message_sent', (newMessage: Message) => {
+      const chatId = newMessage.to;
       setMessages((prev) => ({
         ...prev,
         [chatId]: [...(prev[chatId] || []), newMessage],
