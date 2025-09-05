@@ -9,7 +9,6 @@ interface LockProps {
 
 export default function Lock({ setIsLocked }: LockProps) {
   // 1. Define the correct PIN directly here
-  console.log( process.env.NEXT_PUBLIC_CORRECT_PIN)
   const CORRECT_PIN = process.env.NEXT_PUBLIC_CORRECT_PIN; 
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
