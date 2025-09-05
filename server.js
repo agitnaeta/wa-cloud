@@ -1,5 +1,9 @@
 // File: server.js
+require('dotenv').config();
+
 const { createServer } = require('http');
+const webpush = require('web-push');
+
 const { parse } = require('url');
 const next = require('next');
 const { Server } = require("socket.io");
@@ -9,6 +13,13 @@ const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
+webpush.setVapidDetails(
+  'mailto:lolo@sample.com',
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
+
+let subscriptions = [];
 app.prepare().then(() => {
   const server = createServer((req, res) => {
     handle(req, res, parse(req.url, true));
@@ -31,8 +42,24 @@ app.prepare().then(() => {
     io.emit('chats', chats.map(chat => ({ id: chat.id._serialized, name: chat.name, isGroup: chat.isGroup })));
   });
 
-  client.on('message', msg => {
-    io.emit('message', { from: msg.from, to: msg.to, body: msg.body, id: msg.id.id, fromMe: msg.fromMe, ack: msg.ack });
+  client.on('message', (msg) => {
+    const payload = JSON.stringify({
+      title: 'New WhatsApp Message',
+      body: `${msg.from}: ${msg.body}`,
+    });
+  
+    subscriptions.forEach((sub) => {
+      webpush.sendNotification(sub, payload).catch((err) => console.error(err));
+    });
+  
+    io.emit('message', {
+      from: msg.from,
+      to: msg.to,
+      body: msg.body,
+      id: msg.id.id,
+      fromMe: msg.fromMe,
+      ack: msg.ack,
+    });
   });
 
   // *** NEW: LISTEN FOR MESSAGE STATUS CHANGES ***
@@ -45,6 +72,13 @@ app.prepare().then(() => {
 
   // --- Socket.IO Connection Handler ---
   io.on('connection', (socket) => {
+
+    socket.on("subscribe", (sub) => {
+      subscriptions.push(sub);
+      socket.emit("log", "Push subscription added!");
+      console.log("New subscription received:", sub.endpoint);
+    });
+
     // *** UPDATED: SEND-MESSAGE NOW RETURNS THE SENT MESSAGE ***
     socket.on('send-message', async (data) => {
       try {
@@ -58,10 +92,14 @@ app.prepare().then(() => {
 
     socket.on('get-messages', async (chatId) => {
       try {
+
+
         const chat = await client.getChatById(chatId);
         const messages = await chat.fetchMessages({ limit: 50 });
         const formattedMessages = messages.map(msg => ({ from: msg.from, to: msg.to, body: msg.body, id: msg.id.id, fromMe: msg.fromMe, ack: msg.ack }));
         socket.emit('messages', { chatId, messages: formattedMessages });
+
+        
       } catch (err) {
         socket.emit('log', `Error fetching messages: ${err.message}`);
       }

@@ -50,6 +50,7 @@ export default function Home() {
     socket.on('qr', (qr: string) => {
       setQrCode(qr);
       setIsReady(false);
+      console.log('Loading Keneh!')
     });
     socket.on('ready', () => {
       setIsReady(true);
@@ -72,10 +73,42 @@ export default function Home() {
       }));
     });
 
+   // ✅ Register and subscribe to push
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then(() => navigator.serviceWorker.ready) // wait until active
+      .then(async (reg) => {
+        console.log("Service Worker ready:", reg);
+
+        // Convert VAPID key from base64URL to Uint8Array
+        const urlBase64ToUint8Array = (base64String: string) => {
+          const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+          const base64 = (base64String + padding)
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+          const rawData = window.atob(base64);
+          return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+        };
+
+        const subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+          ),
+        });
+
+        // Send subscription to server
+        socket?.emit("subscribe", subscription);
+        console.log("Push subscription sent to server", subscription);
+      })
+      .catch((err) => console.error("SW registration/subscription failed:", err));
+  }
+
     return () => {
       if (socket) socket.disconnect();
     };
-  }, []);
+  }, [isReady]);
 
   // --- Effect to fetch messages when a chat is selected ---
   useEffect(() => {
