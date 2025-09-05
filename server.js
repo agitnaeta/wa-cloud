@@ -36,7 +36,7 @@ app.prepare().then(() => {
     authStrategy: new LocalAuth(),
     puppeteer: {
       headless: true,
-      executablePath: '/usr/bin/chromium', // ganti sesuai hasil which
+      executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
