@@ -72,8 +72,8 @@ export default function Home() {
         addLog('Session already exists, client ready!');
         socket?.emit('get-chats');
       } else {
-        setIsReady(false);
-        addLog('No session found, please scan QR');
+        addLog('No active session yet, waiting for ready/authenticated...');
+        // jangan setIsReady(false) di sini biar gak nutup UI
       }
     });
 
