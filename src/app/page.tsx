@@ -1,5 +1,4 @@
 'use client'
-// File: pages/index.tsx
 import { useEffect, useState, useRef, FormEvent } from 'react';
 import io, { Socket } from 'socket.io-client';
 import Lock from './Lock';
@@ -30,7 +29,6 @@ interface ChatsEvent {
 
 let socket: Socket | null = null;
 
-// --- Main Page Component ---
 export default function Home() {
   const [qrCode, setQrCode] = useState<string>('');
   const [isLocked, setIsLocked] = useState<boolean>(true);
@@ -39,6 +37,12 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<MessagesMap>({});
+
+  // 🔑 ref supaya listener socket bisa tau chat terbaru
+  const selectedChatRef = useRef<Chat | null>(null);
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
 
   const addLog = (log: string) =>
     setLogs((prevLogs) => [`[${new Date().toLocaleTimeString()}] ${log}`, ...prevLogs]);
@@ -49,7 +53,7 @@ export default function Home() {
 
     socket.on('connect', () => {
       addLog('Socket connected!');
-      socket?.emit('get-chats'); // ✅ always request chats on connect
+      socket?.emit('get-chats');
     });
 
     socket.on('qr', (qr: string) => {
@@ -60,7 +64,7 @@ export default function Home() {
     socket.on('ready', () => {
       setIsReady(true);
       addLog('Client is ready!');
-      socket?.emit('get-chats'); // ✅ fetch chats again when WA is ready
+      socket?.emit('get-chats');
     });
 
     socket.on('log', (log: string) => addLog(log));
@@ -70,55 +74,42 @@ export default function Home() {
       addLog(`Chat list received: ${chatList.length} chats`);
     });
 
-     // incoming messages from WA
+    socket.on('messages', (data: ChatsEvent) =>
+      setMessages((prev) => ({ ...prev, [data.chatId]: data.messages }))
+    );
+
+    // Pesan masuk dari WA
     socket.on('message', (newMessage: Message) => {
-      const chatId = newMessage.fromMe ? newMessage.to : newMessage.from;
+      let chatId = newMessage.fromMe ? newMessage.to : newMessage.from;
+
+      // paksa sync ke chat yang lagi dibuka
+      if (selectedChatRef.current?.id) {
+        chatId = selectedChatRef.current.id;
+      }
+
       setMessages((prev) => ({
         ...prev,
         [chatId]: [...(prev[chatId] || []), newMessage],
       }));
     });
 
-    // 🔥 add this for messages you send
+    // Pesan keluar yang udah dikonfirmasi server
     socket.on('message_sent', (newMessage: Message) => {
-      const chatId = newMessage.to;
+      const chatId = selectedChatRef.current?.id;
+      if (!chatId) return;
+
       setMessages((prev) => ({
         ...prev,
-        [chatId]: [...(prev[chatId] || []), newMessage],
+        [chatId]: [...(prev[chatId] || []), { ...newMessage, fromMe: true }],
       }));
     });
-
-    // ✅ Register push
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then(() => navigator.serviceWorker.ready)
-        .then(async (reg) => {
-          const urlBase64ToUint8Array = (base64String: string) => {
-            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-            const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-            const rawData = window.atob(base64);
-            return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-          };
-
-          const subscription = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(
-              process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-            ),
-          });
-
-          socket?.emit("subscribe", subscription);
-        })
-        .catch((err) => console.error("SW registration failed:", err));
-    }
 
     return () => {
       socket?.disconnect();
     };
-  }, []); // ✅ hanya jalan sekali
+  }, []);
 
-  // --- Effect to fetch messages when a chat is selected ---
+  // --- Fetch messages ketika ganti chat ---
   useEffect(() => {
     if (selectedChat && !messages[selectedChat.id]) {
       addLog(`Fetching messages for ${selectedChat.name || selectedChat.id}...`);
@@ -157,6 +148,7 @@ export default function Home() {
           <MessagePanel
             selectedChat={selectedChat}
             messages={messages[selectedChat.id] || []}
+            setMessages={setMessages}
             addLog={addLog}
           />
         ) : (
@@ -224,10 +216,12 @@ const WelcomeScreen = () => (
 const MessagePanel = ({
   selectedChat,
   messages,
+  setMessages,
   addLog,
 }: {
   selectedChat: Chat;
   messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<MessagesMap>>;
   addLog: (log: string) => void;
 }) => {
   const [message, setMessage] = useState<string>('');
@@ -241,6 +235,21 @@ const MessagePanel = ({
     e.preventDefault();
     if (socket && selectedChat && message.trim()) {
       addLog(`Sending message to ${selectedChat.name || selectedChat.id}...`);
+
+      // ✅ Optimistic update (langsung muncul hijau)
+      const tempMessage: Message = {
+        id: `temp-${Date.now()}`,
+        body: message,
+        from: "me",
+        to: selectedChat.id,
+        fromMe: true,
+      };
+
+      setMessages((prev) => ({
+        ...prev,
+        [selectedChat.id]: [...(prev[selectedChat.id] || []), tempMessage],
+      }));
+
       socket.emit('send-message', { to: selectedChat.id, message });
       setMessage('');
     }
