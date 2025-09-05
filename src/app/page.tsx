@@ -53,6 +53,7 @@ export default function Home() {
 
     socket.on('connect', () => {
       addLog('Socket connected!');
+      socket?.emit('check-session'); // minta status session
       socket?.emit('get-chats');
     });
 
@@ -64,7 +65,17 @@ export default function Home() {
     socket.on('authenticated', () => {
       setIsReady(true)
     });
-    
+
+    socket.on('session_exists', (exists: boolean) => {
+      if (exists) {
+        setIsReady(true);
+        addLog('Session already exists, client ready!');
+        socket?.emit('get-chats');
+      } else {
+        setIsReady(false);
+      }
+    });
+
     socket.on('ready', () => {
       setIsReady(true);
       addLog('Client is ready!');

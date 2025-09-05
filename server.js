@@ -125,6 +125,11 @@ app.prepare().then(() => {
       console.log("📡 New subscription received:", sub.endpoint);
     });
 
+    socket.on("check-session", () => {
+      const isLoggedIn = client.info != null; // atau cek state client
+      socket.emit("session_exists", isLoggedIn);
+    });
+
     socket.on('send-message', async (data) => {
       try {
         const sentMsg = await client.sendMessage(data.to, data.message);
