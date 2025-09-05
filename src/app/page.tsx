@@ -8,6 +8,7 @@ import Lock from './Lock';
 interface Chat {
   id: string;
   name?: string;
+  isGroup?: boolean;
 }
 
 interface Message {
@@ -46,26 +47,34 @@ export default function Home() {
   useEffect(() => {
     socket = io();
 
-    socket.on('connect', () => addLog('Socket connected!'));
+    socket.on('connect', () => {
+      addLog('Socket connected!');
+      socket?.emit('get-chats'); // ✅ always request chats on connect
+    });
+
     socket.on('qr', (qr: string) => {
       setQrCode(qr);
       setIsReady(false);
-      console.log('Loading Keneh!')
     });
+
     socket.on('ready', () => {
       setIsReady(true);
       addLog('Client is ready!');
+      socket?.emit('get-chats'); // ✅ fetch chats again when WA is ready
     });
+
     socket.on('log', (log: string) => addLog(log));
+
     socket.on('chats', (chatList: Chat[]) => {
       setChats(chatList);
-      addLog('Chat list received.');
+      addLog(`Chat list received: ${chatList.length} chats`);
     });
+
     socket.on('messages', (data: ChatsEvent) =>
       setMessages((prev) => ({ ...prev, [data.chatId]: data.messages }))
     );
+
     socket.on('message', (newMessage: Message) => {
-      addLog(`New Message from ${newMessage.from}: ${newMessage.body}`);
       const chatId = newMessage.fromMe ? newMessage.to : newMessage.from;
       setMessages((prev) => ({
         ...prev,
@@ -73,55 +82,45 @@ export default function Home() {
       }));
     });
 
-   // ✅ Register and subscribe to push
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then(() => navigator.serviceWorker.ready) // wait until active
-      .then(async (reg) => {
-        console.log("Service Worker ready:", reg);
+    // ✅ Register push
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(() => navigator.serviceWorker.ready)
+        .then(async (reg) => {
+          const urlBase64ToUint8Array = (base64String: string) => {
+            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+            const rawData = window.atob(base64);
+            return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+          };
 
-        // Convert VAPID key from base64URL to Uint8Array
-        const urlBase64ToUint8Array = (base64String: string) => {
-          const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-          const base64 = (base64String + padding)
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
-          const rawData = window.atob(base64);
-          return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-        };
+          const subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(
+              process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+            ),
+          });
 
-        const subscription = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(
-            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-          ),
-        });
-
-        // Send subscription to server
-        socket?.emit("subscribe", subscription);
-        console.log("Push subscription sent to server", subscription);
-      })
-      .catch((err) => console.error("SW registration/subscription failed:", err));
-  }
+          socket?.emit("subscribe", subscription);
+        })
+        .catch((err) => console.error("SW registration failed:", err));
+    }
 
     return () => {
-      if (socket) socket.disconnect();
+      socket?.disconnect();
     };
-  }, [isReady]);
+  }, []); // ✅ hanya jalan sekali
 
   // --- Effect to fetch messages when a chat is selected ---
   useEffect(() => {
-    console.log(`Statusnya ${isLocked}`);
     if (selectedChat && !messages[selectedChat.id]) {
-      addLog(`Fetching messages for ${selectedChat.name}...`);
+      addLog(`Fetching messages for ${selectedChat.name || selectedChat.id}...`);
       socket?.emit('get-messages', selectedChat.id);
     }
-  }, [selectedChat, messages, isLocked]);
+  }, [selectedChat, messages]);
 
   if (isLocked) return <Lock setIsLocked={setIsLocked} />;
-
-  // --- UI Rendering ---
   if (!isReady) return <QRCodeDisplay qrCode={qrCode} logs={logs} />;
 
   return (
@@ -140,11 +139,13 @@ export default function Home() {
               onSelect={setSelectedChat}
             />
           ))}
-           <LogPanel logs={logs} />
+        </div>
+        <div className="h-40 overflow-y-auto">
+          <LogPanel logs={logs} />
         </div>
       </div>
 
-      {/* Right Panel: Messages and Logs */}
+      {/* Right Panel: Messages */}
       <div className="w-[70%] flex flex-col">
         {selectedChat ? (
           <MessagePanel
@@ -155,14 +156,12 @@ export default function Home() {
         ) : (
           <WelcomeScreen />
         )}
-       
       </div>
     </div>
   );
 }
 
 // --- Sub-Components ---
-
 const QRCodeDisplay = ({ qrCode, logs }: { qrCode: string; logs: string[] }) => (
   <div className="flex flex-col items-center justify-center h-screen bg-gray-50">
     <div className="p-8 bg-white rounded-lg shadow-lg text-center">
@@ -179,7 +178,7 @@ const QRCodeDisplay = ({ qrCode, logs }: { qrCode: string; logs: string[] }) => 
         <p className="text-gray-500">Loading QR Code...</p>
       )}
     </div>
-    <div className="w-full max-w-4xl mt-8 p2">
+    <div className="w-full max-w-4xl mt-8">
       <LogPanel logs={logs} />
     </div>
   </div>
@@ -200,38 +199,17 @@ const ChatListItem = ({
     }`}
     onClick={() => onSelect(chat)}
   >
-    <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex-shrink-0"></div>
+    <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex-shrink-0 flex items-center justify-center">
+      {chat.isGroup ? "👥" : "👤"}
+    </div>
     <div className="w-full overflow-hidden">
-      <p className="font-semibold truncate">{chat.name || chat.id.split('@')[0]}</p>
+      <p className="font-semibold truncate">{chat.name || chat.id.split('@')[0] || "Unknown"}</p>
     </div>
   </div>
 );
 
 const WelcomeScreen = () => (
   <div className="flex flex-col flex-1 items-center justify-center text-center bg-gray-100">
-    <div className="w-20 h-20 mb-4 text-gray-400">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 
-          0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 
-          0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 
-          12c0 4.556-4.03 8.25-9 
-          8.25a9.764 9.764 0 01-2.555-.337A5.972 
-          5.972 0 015.41 20.97a5.969 5.969 0 
-          01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 
-          16.178 3 14.189 3 12c0-4.556 4.03-8.25 
-          9-8.25s9 3.694 9 8.25z"
-        />
-      </svg>
-    </div>
     <h3 className="text-xl text-gray-600">Select a chat to start messaging</h3>
     <p className="text-gray-400">Your conversations will appear here.</p>
   </div>
@@ -265,7 +243,9 @@ const MessagePanel = ({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <header className="p-4 border-b border-gray-200 flex items-center bg-white flex-shrink-0">
-        <div className="w-10 h-10 bg-gray-300 rounded-full mr-4"></div>
+        <div className="w-10 h-10 bg-gray-300 rounded-full mr-4 flex items-center justify-center">
+          {selectedChat.isGroup ? "👥" : "👤"}
+        </div>
         <h3 className="font-semibold">{selectedChat.name || selectedChat.id}</h3>
       </header>
 
@@ -292,20 +272,14 @@ const MessagePanel = ({
           placeholder="Type a message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="flex-1 px-4 py-2 mr-4 bg-gray-100 border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="flex-1 px-4 py-2 mr-4 bg-gray-100 border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
         />
         <button
           type="submit"
-          className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-300"
+          className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600"
           disabled={!message.trim()}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.949a.75.75 0 
-            00.95.826L11.25 9.25v1.5l-7.14 
-            1.785a.75.75 0 00-.95.826l1.414 
-            4.949a.75.75 0 00.95.826l14.25-3.562a.75.75 
-            0 000-1.405L3.105 2.289z" />
-          </svg>
+          Send
         </button>
       </form>
     </div>
@@ -319,13 +293,11 @@ const LogPanel = ({ logs }: { logs: string[] }) => {
   }, [logs]);
 
   return (
-    <div className="h-full border-t border-gray-200 bg-gray-800 text-green-400 font-mono text-xs">
+    <div className="h-full bg-gray-800 text-green-400 font-mono text-xs">
       <h4 className="p-2 border-b border-gray-700 text-gray-400">Logs</h4>
-      <div className="p-3 overflow-y-auto h-full">
+      <div className="p-3 overflow-y-auto h-32">
         {logs.map((log, i) => (
-          <p key={i} className="whitespace-pre-wrap break-all">
-            {log}
-          </p>
+          <p key={i} className="whitespace-pre-wrap break-all">{log}</p>
         ))}
         <div ref={logsEndRef} />
       </div>
