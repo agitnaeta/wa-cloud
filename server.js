@@ -35,8 +35,18 @@ app.prepare().then(() => {
   const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-      headless: true, // kalau mau lihat browser ganti jadi false
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      headless: true,
+      executablePath: '/usr/bin/chromium', // ganti sesuai hasil which
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+      ],
     },
   });
 
