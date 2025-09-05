@@ -61,6 +61,10 @@ export default function Home() {
       setIsReady(false);
     });
 
+    socket.on('authenticated', () => {
+      setIsReady(true)
+    });
+    
     socket.on('ready', () => {
       setIsReady(true);
       addLog('Client is ready!');
