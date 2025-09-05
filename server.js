@@ -145,6 +145,21 @@ app.prepare().then(() => {
       }
     });
 
+     // kirim chat list kalau diminta
+  socket.on('get-chats', async () => {
+    try {
+      const chats = await client.getChats();
+      socket.emit('chats', chats.map(chat => ({
+        id: chat.id._serialized,
+        name: chat.name,
+        isGroup: chat.isGroup,
+      })));
+    } catch (err) {
+      console.error("Error fetching chats:", err);
+      socket.emit('chats', []);
+    }
+  });
+
     socket.on('disconnect', () => {
       console.log('Client disconnected');
     });
