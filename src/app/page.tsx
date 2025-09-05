@@ -73,6 +73,7 @@ export default function Home() {
         socket?.emit('get-chats');
       } else {
         setIsReady(false);
+        addLog('No session found, please scan QR');
       }
     });
 

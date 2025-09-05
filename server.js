@@ -125,9 +125,17 @@ app.prepare().then(() => {
       console.log("📡 New subscription received:", sub.endpoint);
     });
 
-    socket.on("check-session", () => {
-      const isLoggedIn = client.info != null; // atau cek state client
-      socket.emit("session_exists", isLoggedIn);
+    socket.on("check-session", async () => {
+      try {
+        const state = await client.getState(); // bisa 'CONNECTED', 'OPENING', 'DISCONNECTED'
+        if (state === "CONNECTED") {
+          socket.emit("session_exists", true);
+        } else {
+          socket.emit("session_exists", false);
+        }
+      } catch (err) {
+        socket.emit("session_exists", false);
+      }
     });
 
     socket.on('send-message', async (data) => {
