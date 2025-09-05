@@ -33,7 +33,9 @@ app.prepare().then(() => {
   });
 
   const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+      dataPath: './.wwebjs_auth' // folder penyimpanan session
+    }),
     puppeteer: {
       headless: true,
       executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
@@ -125,17 +127,17 @@ app.prepare().then(() => {
       console.log("📡 New subscription received:", sub.endpoint);
     });
 
-    socket.on("check-session", async () => {
+    socket.on('check-session', async () => {
       try {
-        const state = await client.getState(); // bisa 'CONNECTED', 'OPENING', 'DISCONNECTED'
-        if (state === "CONNECTED") {
-          socket.emit("session_exists", true);
-        } else {
-          socket.emit("session_exists", false);
-        }
+        const state = await client.getState();
+        socket.emit('session_exists', state === 'CONNECTED');
       } catch (err) {
-        socket.emit("session_exists", false);
+        socket.emit('session_exists', false);
       }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Client disconnected');
     });
 
     socket.on('send-message', async (data) => {
