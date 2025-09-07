@@ -214,7 +214,7 @@ app.prepare().then(() => {
       })
     );
 
-    console.log(formattedMessages)
+    // console.log(formattedMessages)
 
     socket.emit('messages', { chatId, messages: formattedMessages });
   } catch (err) {

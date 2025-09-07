@@ -295,10 +295,45 @@ const MessagePanel = ({
               msg.fromMe ? 'self-end bg-green-100' : 'self-start bg-white shadow-sm'
             }`}
           >
-            {msg.media ? (
+            {/* Location (prioritas) */}
+            {msg.type === 'location' ? (
+              <div className="flex flex-col items-start">
+                {msg.hasMedia && msg.media && msg.media.mimetype.startsWith('image/') && (
+                  <img
+                    src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                    alt="Location thumbnail"
+                    className="rounded-lg max-w-xs cursor-pointer"
+                    onClick={() =>
+                      window.open(
+                        `https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`,
+                        '_blank',
+                      )
+                    }
+                  />
+                )}
+                <a
+                  href={`https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-600 underline mt-1"
+                >
+                  📍 {msg.location.latitude}, {msg.location.longitude}
+                  {msg.location.description ? ` - ${msg.location.description}` : ''}
+                </a>
+              </div>
+            ) : msg.media ? (
               <>
+                {/* Sticker */}
+                {msg.type === 'sticker' && (
+                  <img
+                    src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                    alt="Sticker"
+                    className="w-24 h-24"
+                  />
+                )}
+
                 {/* Image */}
-                {msg.media.mimetype.startsWith('image/') && (
+                {msg.media.mimetype.startsWith('image/') && msg.type !== 'sticker' && (
                   <img
                     src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
                     alt={msg.media.filename || 'Image'}
@@ -338,47 +373,10 @@ const MessagePanel = ({
                     📎 {msg.media.filename || 'Download file'}
                   </a>
                 )}
-
-                {/* Sticker */}
-                {msg.type === 'sticker' && (
-                  <img
-                    src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
-                    alt="Sticker"
-                    className="w-24 h-24"
-                  />
-                )}
               </>
             ) : (
-              <>
-                {/* Location */}
-                {msg.type === 'location' ? (
-                  <div className="flex flex-col items-start">
-                    {msg.hasMedia && msg.media && (
-                      <img
-                        src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
-                        alt="Location thumbnail"
-                        className="rounded-lg max-w-xs cursor-pointer"
-                        onClick={() =>
-                          window.open(
-                            `https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`,
-                            '_blank',
-                          )
-                        }
-                      />
-                    )}
-                    <a
-                      href={`https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-green-600 underline mt-1"
-                    >
-                      📍 {msg.location.latitude}, {msg.location.longitude}
-                    </a>
-                  </div>
-                ) : (
-                  msg.body
-                )}
-              </>
+              // Default = teks biasa
+              msg.body
             )}
           </div>
         ))}
