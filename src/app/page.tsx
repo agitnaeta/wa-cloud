@@ -1,147 +1,147 @@
 'use client'
-import { useEffect, useState, useRef, FormEvent } from 'react';
-import io, { Socket } from 'socket.io-client';
-import Lock from './Lock';
+import { useEffect, useState, useRef, FormEvent } from 'react'
+import io, { Socket } from 'socket.io-client'
+import Lock from './Lock'
 
 // --- Types ---
 interface Chat {
-  id: string;
-  name?: string;
-  isGroup?: boolean;
+  id: string
+  name?: string
+  isGroup?: boolean
 }
 
 interface Media {
-  mimetype: string;
-  data: string; // base64
-  filename?: string | null;
+  mimetype: string
+  data: string // base64
+  filename?: string | null
 }
 
 interface Message {
-  id?: string;
-  body: string;
-  from: string;
-  to: string;
-  fromMe: boolean;
-  media?: Media | null;
+  id?: string
+  body: string
+  from: string
+  to: string
+  fromMe: boolean
+  media?: Media | null
 }
 
 interface MessagesMap {
-  [chatId: string]: Message[];
+  [chatId: string]: Message[]
 }
 
 interface ChatsEvent {
-  chatId: string;
-  messages: Message[];
+  chatId: string
+  messages: Message[]
 }
 
-let socket: Socket | null = null;
+let socket: Socket | null = null
 
 export default function Home() {
-  const [qrCode, setQrCode] = useState<string>('');
-  const [isLocked, setIsLocked] = useState<boolean>(true);
-  const [isReady, setIsReady] = useState<boolean>(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
-  const [messages, setMessages] = useState<MessagesMap>({});
+  const [qrCode, setQrCode] = useState<string>('')
+  const [isLocked, setIsLocked] = useState<boolean>(true)
+  const [isReady, setIsReady] = useState<boolean>(false)
+  const [logs, setLogs] = useState<string[]>([])
+  const [chats, setChats] = useState<Chat[]>([])
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
+  const [messages, setMessages] = useState<MessagesMap>({})
 
   // 🔑 ref supaya listener socket bisa tau chat terbaru
-  const selectedChatRef = useRef<Chat | null>(null);
+  const selectedChatRef = useRef<Chat | null>(null)
   useEffect(() => {
-    selectedChatRef.current = selectedChat;
-  }, [selectedChat]);
+    selectedChatRef.current = selectedChat
+  }, [selectedChat])
 
   const addLog = (log: string) =>
-    setLogs((prevLogs) => [`[${new Date().toLocaleTimeString()}] ${log}`, ...prevLogs]);
+    setLogs((prevLogs) => [`[${new Date().toLocaleTimeString()}] ${log}`, ...prevLogs])
 
   // --- Socket.IO Event Listeners ---
   useEffect(() => {
-    socket = io();
+    socket = io()
 
     socket.on('connect', () => {
-      addLog('Socket connected!');
-      socket?.emit('check-session'); // minta status session
-      socket?.emit('get-chats');
-    });
+      addLog('Socket connected!')
+      socket?.emit('check-session') // minta status session
+      socket?.emit('get-chats')
+    })
 
     socket.on('qr', (qr: string) => {
-      setQrCode(qr);
-      setIsReady(false);
-    });
+      setQrCode(qr)
+      setIsReady(false)
+    })
 
     socket.on('authenticated', () => {
       setIsReady(true)
-    });
+    })
 
     socket.on('session_exists', (exists: boolean) => {
       if (exists) {
-        setIsReady(true);
-        addLog('Session already exists, client ready!');
-        socket?.emit('get-chats');
+        setIsReady(true)
+        addLog('Session already exists, client ready!')
+        socket?.emit('get-chats')
       } else {
-        addLog('No active session yet, waiting for ready/authenticated...');
+        addLog('No active session yet, waiting for ready/authenticated...')
         // jangan setIsReady(false) di sini biar gak nutup UI
       }
-    });
+    })
 
     socket.on('ready', () => {
-      setIsReady(true);
-      addLog('Client is ready!');
-      socket?.emit('get-chats');
-    });
+      setIsReady(true)
+      addLog('Client is ready!')
+      socket?.emit('get-chats')
+    })
 
-    socket.on('log', (log: string) => addLog(log));
+    socket.on('log', (log: string) => addLog(log))
 
     socket.on('chats', (chatList: Chat[]) => {
-      setChats(chatList);
-      addLog(`Chat list received: ${chatList.length} chats`);
-    });
+      setChats(chatList)
+      addLog(`Chat list received: ${chatList.length} chats`)
+    })
 
     socket.on('messages', (data: ChatsEvent) =>
-      setMessages((prev) => ({ ...prev, [data.chatId]: data.messages }))
-    );
+      setMessages((prev) => ({ ...prev, [data.chatId]: data.messages })),
+    )
 
     // Pesan masuk dari WA
     socket.on('message', (newMessage: Message) => {
-      let chatId = newMessage.fromMe ? newMessage.to : newMessage.from;
+      let chatId = newMessage.fromMe ? newMessage.to : newMessage.from
 
       // paksa sync ke chat yang lagi dibuka
       if (selectedChatRef.current?.id) {
-        chatId = selectedChatRef.current.id;
+        chatId = selectedChatRef.current.id
       }
 
       setMessages((prev) => ({
         ...prev,
         [chatId]: [...(prev[chatId] || []), newMessage],
-      }));
-    });
+      }))
+    })
 
     // Pesan keluar yang udah dikonfirmasi server
     socket.on('message_sent', (newMessage: Message) => {
-      const chatId = selectedChatRef.current?.id;
-      if (!chatId) return;
+      const chatId = selectedChatRef.current?.id
+      if (!chatId) return
 
       setMessages((prev) => ({
         ...prev,
         [chatId]: [...(prev[chatId] || []), { ...newMessage, fromMe: true }],
-      }));
-    });
+      }))
+    })
 
     return () => {
-      socket?.disconnect();
-    };
-  }, []);
+      socket?.disconnect()
+    }
+  }, [])
 
   // --- Fetch messages ketika ganti chat ---
   useEffect(() => {
     if (selectedChat && !messages[selectedChat.id]) {
-      addLog(`Fetching messages for ${selectedChat.name || selectedChat.id}...`);
-      socket?.emit('get-messages', selectedChat.id);
+      addLog(`Fetching messages for ${selectedChat.name || selectedChat.id}...`)
+      socket?.emit('get-messages', selectedChat.id)
     }
-  }, [selectedChat, messages]);
+  }, [selectedChat, messages])
 
-  if (isLocked) return <Lock setIsLocked={setIsLocked} />;
-  if (!isReady) return <QRCodeDisplay qrCode={qrCode} logs={logs} />;
+  if (isLocked) return <Lock setIsLocked={setIsLocked} />
+  if (!isReady) return <QRCodeDisplay qrCode={qrCode} logs={logs} />
 
   return (
     <div className="flex h-screen font-sans text-gray-800">
@@ -179,7 +179,7 @@ export default function Home() {
         )}
       </div>
     </div>
-  );
+  )
 }
 
 // --- Sub-Components ---
@@ -190,7 +190,7 @@ const QRCodeDisplay = ({ qrCode, logs }: { qrCode: string; logs: string[] }) => 
       {qrCode ? (
         <img
           src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
-            qrCode
+            qrCode,
           )}&size=300x300`}
           alt="QR Code"
           className="mx-auto"
@@ -203,16 +203,16 @@ const QRCodeDisplay = ({ qrCode, logs }: { qrCode: string; logs: string[] }) => 
       <LogPanel logs={logs} />
     </div>
   </div>
-);
+)
 
 const ChatListItem = ({
   chat,
   selectedChat,
   onSelect,
 }: {
-  chat: Chat;
-  selectedChat: Chat | null;
-  onSelect: (chat: Chat) => void;
+  chat: Chat
+  selectedChat: Chat | null
+  onSelect: (chat: Chat) => void
 }) => (
   <div
     className={`flex items-center p-4 cursor-pointer hover:bg-gray-100 ${
@@ -221,20 +221,20 @@ const ChatListItem = ({
     onClick={() => onSelect(chat)}
   >
     <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex-shrink-0 flex items-center justify-center">
-      {chat.isGroup ? "👥" : "👤"}
+      {chat.isGroup ? '👥' : '👤'}
     </div>
     <div className="w-full overflow-hidden">
-      <p className="font-semibold truncate">{chat.name || chat.id.split('@')[0] || "Unknown"}</p>
+      <p className="font-semibold truncate">{chat.name || chat.id.split('@')[0] || 'Unknown'}</p>
     </div>
   </div>
-);
+)
 
 const WelcomeScreen = () => (
   <div className="flex flex-col flex-1 items-center justify-center text-center bg-gray-100">
     <h3 className="text-xl text-gray-600">Select a chat to start messaging</h3>
     <p className="text-gray-400">Your conversations will appear here.</p>
   </div>
-);
+)
 
 const MessagePanel = ({
   selectedChat,
@@ -242,22 +242,22 @@ const MessagePanel = ({
   setMessages,
   addLog,
 }: {
-  selectedChat: Chat;
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<MessagesMap>>;
-  addLog: (log: string) => void;
+  selectedChat: Chat
+  messages: Message[]
+  setMessages: React.Dispatch<React.SetStateAction<MessagesMap>>
+  addLog: (log: string) => void
 }) => {
-  const [message, setMessage] = useState<string>('');
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [message, setMessage] = useState<string>('')
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const sendMessage = (e: FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     if (socket && selectedChat && message.trim()) {
-      addLog(`Sending message to ${selectedChat.name || selectedChat.id}...`);
+      addLog(`Sending message to ${selectedChat.name || selectedChat.id}...`)
 
       // ✅ Optimistic update (langsung muncul hijau)
       // const tempMessage: Message = {
@@ -273,70 +273,100 @@ const MessagePanel = ({
       //   [selectedChat.id]: [...(prev[selectedChat.id] || []), tempMessage],
       // }));
 
-      socket.emit('send-message', { to: selectedChat.id, message });
-      setMessage('');
+      socket.emit('send-message', { to: selectedChat.id, message })
+      setMessage('')
     }
-  };
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <header className="p-4 border-b border-gray-200 flex items-center bg-white flex-shrink-0">
         <div className="w-10 h-10 bg-gray-300 rounded-full mr-4 flex items-center justify-center">
-          {selectedChat.isGroup ? "👥" : "👤"}
+          {selectedChat.isGroup ? '👥' : '👤'}
         </div>
         <h3 className="font-semibold">{selectedChat.name || selectedChat.id}</h3>
       </header>
 
       <div className="flex-1 p-6 overflow-y-auto bg-gray-50 flex flex-col space-y-2 min-h-0">
-       {messages.map((msg, index) => (
-  <div
-    key={msg.id || index}
-    className={`max-w-xs md:max-w-md p-3 rounded-lg break-words ${
-      msg.fromMe ? 'self-end bg-green-100' : 'self-start bg-white shadow-sm'
-    }`}
-  >
-    {msg.media ? (
-      <>
-        {msg.media.mimetype.startsWith("image/") && (
-          <img
-            src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
-            alt={msg.media.filename || "Image"}
-            className="rounded-lg max-w-full"
-          />
-        )}
-        {msg.media.mimetype.startsWith("video/") && (
-          <video controls className="rounded-lg max-w-full">
-            <source
-              src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
-              type={msg.media.mimetype}
-            />
-            Your browser does not support the video tag.
-          </video>
-        )}
-        {msg.media.mimetype.startsWith("audio/") && (
-          <audio controls>
-            <source
-              src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
-              type={msg.media.mimetype}
-            />
-            Your browser does not support the audio element.
-          </audio>
-        )}
-        {msg.media.mimetype.startsWith("application/") && (
-          <a
-            href={`data:${msg.media.mimetype};base64,${msg.media.data}`}
-            download={msg.media.filename || "file"}
-            className="text-blue-600 underline"
+        {messages.map((msg, index) => (
+          <div
+            key={msg.id || index}
+            className={`max-w-xs md:max-w-md p-3 rounded-lg break-words ${
+              msg.fromMe ? 'self-end bg-green-100' : 'self-start bg-white shadow-sm'
+            }`}
           >
-            📎 {msg.media.filename || "Download file"}
-          </a>
-        )}
-      </>
-    ) : (
-      msg.body
-    )}
-  </div>
-))}
+            {msg.media ? (
+              <>
+                {/* Image */}
+                {msg.media.mimetype.startsWith('image/') && (
+                  <img
+                    src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                    alt={msg.media.filename || 'Image'}
+                    className="rounded-lg max-w-full"
+                  />
+                )}
+
+                {/* Video */}
+                {msg.media.mimetype.startsWith('video/') && (
+                  <video controls className="rounded-lg max-w-full">
+                    <source
+                      src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                      type={msg.media.mimetype}
+                    />
+                    Your browser does not support the video tag.
+                  </video>
+                )}
+
+                {/* Audio / Voice Note */}
+                {msg.media.mimetype.startsWith('audio/') && (
+                  <audio controls>
+                    <source
+                      src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                      type={msg.media.mimetype}
+                    />
+                    Your browser does not support the audio element.
+                  </audio>
+                )}
+
+                {/* Document */}
+                {msg.media.mimetype.startsWith('application/') && (
+                  <a
+                    href={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                    download={msg.media.filename || 'file'}
+                    className="text-blue-600 underline"
+                  >
+                    📎 {msg.media.filename || 'Download file'}
+                  </a>
+                )}
+
+                {/* Sticker */}
+                {msg.type === 'sticker' && (
+                  <img
+                    src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                    alt="Sticker"
+                    className="w-24 h-24"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {/* Location */}
+                {msg.type === 'location' ? (
+                  <a
+                    href={`https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-600 underline"
+                  >
+                    📍 {msg.location.latitude}, {msg.location.longitude}
+                  </a>
+                ) : (
+                  msg.body
+                )}
+              </>
+            )}
+          </div>
+        ))}
 
         <div ref={messagesEndRef} />
       </div>
@@ -361,24 +391,26 @@ const MessagePanel = ({
         </button>
       </form>
     </div>
-  );
-};
+  )
+}
 
 const LogPanel = ({ logs }: { logs: string[] }) => {
-  const logsEndRef = useRef<HTMLDivElement | null>(null);
+  const logsEndRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
 
   return (
     <div className="h-full bg-gray-800 text-green-400 font-mono text-xs">
       <h4 className="p-2 border-b border-gray-700 text-gray-400">Logs</h4>
       <div className="p-3 overflow-y-auto h-32">
         {logs.map((log, i) => (
-          <p key={i} className="whitespace-pre-wrap break-all">{log}</p>
+          <p key={i} className="whitespace-pre-wrap break-all">
+            {log}
+          </p>
         ))}
         <div ref={logsEndRef} />
       </div>
     </div>
-  );
-};
+  )
+}
