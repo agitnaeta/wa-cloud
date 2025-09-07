@@ -184,7 +184,7 @@ app.prepare().then(() => {
     socket.on('get-messages', async (chatId) => {
   try {
     const chat = await client.getChatById(chatId);
-    const messages = await chat.fetchMessages({ limit: 50 });
+    const messages = await chat.fetchMessages({ limit: 20 });
 
     const formattedMessages = await Promise.all(
       messages.map(async (msg) => {
