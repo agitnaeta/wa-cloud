@@ -182,23 +182,44 @@ app.prepare().then(() => {
     });
 
     socket.on('get-messages', async (chatId) => {
-      try {
-        const chat = await client.getChatById(chatId);
-        const messages = await chat.fetchMessages({ limit: 50 });
-        const formattedMessages = messages.map(msg => ({
+  try {
+    const chat = await client.getChatById(chatId);
+    const messages = await chat.fetchMessages({ limit: 50 });
+
+    const formattedMessages = await Promise.all(
+      messages.map(async (msg) => {
+        let media = null;
+        if (msg.hasMedia) {
+          try {
+            const mediaData = await msg.downloadMedia();
+            media = {
+              mimetype: mediaData.mimetype,
+              data: mediaData.data, // base64
+              filename: mediaData.filename || null,
+            };
+          } catch (err) {
+            console.error("Error downloading media:", err);
+          }
+        }
+
+        return {
           from: msg.from,
           to: msg.to,
           body: msg.body,
           id: msg.id.id,
           fromMe: msg.fromMe,
-          ack: msg.ack
-        }));
-        socket.emit('messages', { chatId, messages: formattedMessages });
-      } catch (err) {
-        console.error("Error fetching messages:", err);
-        socket.emit('log', `Error fetching messages: ${err.message}`);
-      }
-    });
+          ack: msg.ack,
+          media, // << tambahan
+        };
+      })
+    );
+
+    socket.emit('messages', { chatId, messages: formattedMessages });
+  } catch (err) {
+    console.error("Error fetching messages:", err);
+    socket.emit('log', `Error fetching messages: ${err.message}`);
+  }
+});
   });
 
   server.listen(3000, (err) => {

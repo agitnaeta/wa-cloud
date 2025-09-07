@@ -10,12 +10,19 @@ interface Chat {
   isGroup?: boolean;
 }
 
+interface Media {
+  mimetype: string;
+  data: string; // base64
+  filename?: string | null;
+}
+
 interface Message {
   id?: string;
   body: string;
   from: string;
   to: string;
   fromMe: boolean;
+  media?: Media | null;
 }
 
 interface MessagesMap {
@@ -281,16 +288,56 @@ const MessagePanel = ({
       </header>
 
       <div className="flex-1 p-6 overflow-y-auto bg-gray-50 flex flex-col space-y-2 min-h-0">
-        {messages.map((msg, index) => (
-          <div
-            key={msg.id || index}
-            className={`max-w-xs md:max-w-md p-3 rounded-lg break-words ${
-              msg.fromMe ? 'self-end bg-green-100' : 'self-start bg-white shadow-sm'
-            }`}
+       {messages.map((msg, index) => (
+  <div
+    key={msg.id || index}
+    className={`max-w-xs md:max-w-md p-3 rounded-lg break-words ${
+      msg.fromMe ? 'self-end bg-green-100' : 'self-start bg-white shadow-sm'
+    }`}
+  >
+    {msg.media ? (
+      <>
+        {msg.media.mimetype.startsWith("image/") && (
+          <img
+            src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+            alt={msg.media.filename || "Image"}
+            className="rounded-lg max-w-full"
+          />
+        )}
+        {msg.media.mimetype.startsWith("video/") && (
+          <video controls className="rounded-lg max-w-full">
+            <source
+              src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+              type={msg.media.mimetype}
+            />
+            Your browser does not support the video tag.
+          </video>
+        )}
+        {msg.media.mimetype.startsWith("audio/") && (
+          <audio controls>
+            <source
+              src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+              type={msg.media.mimetype}
+            />
+            Your browser does not support the audio element.
+          </audio>
+        )}
+        {msg.media.mimetype.startsWith("application/") && (
+          <a
+            href={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+            download={msg.media.filename || "file"}
+            className="text-blue-600 underline"
           >
-            {msg.body}
-          </div>
-        ))}
+            📎 {msg.media.filename || "Download file"}
+          </a>
+        )}
+      </>
+    ) : (
+      msg.body
+    )}
+  </div>
+))}
+
         <div ref={messagesEndRef} />
       </div>
 
