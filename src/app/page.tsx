@@ -352,14 +352,29 @@ const MessagePanel = ({
               <>
                 {/* Location */}
                 {msg.type === 'location' ? (
-                  <a
-                    href={`https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-600 underline"
-                  >
-                    📍 {msg.location.latitude}, {msg.location.longitude}
-                  </a>
+                  <div className="flex flex-col items-start">
+                    {msg.hasMedia && msg.media && (
+                      <img
+                        src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                        alt="Location thumbnail"
+                        className="rounded-lg max-w-xs cursor-pointer"
+                        onClick={() =>
+                          window.open(
+                            `https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`,
+                            '_blank',
+                          )
+                        }
+                      />
+                    )}
+                    <a
+                      href={`https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-green-600 underline mt-1"
+                    >
+                      📍 {msg.location.latitude}, {msg.location.longitude}
+                    </a>
+                  </div>
                 ) : (
                   msg.body
                 )}
