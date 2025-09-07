@@ -214,6 +214,8 @@ app.prepare().then(() => {
       })
     );
 
+    console.log(formattedMessages)
+
     socket.emit('messages', { chatId, messages: formattedMessages });
   } catch (err) {
     console.error("Error fetching messages:", err);

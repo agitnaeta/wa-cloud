@@ -260,18 +260,18 @@ const MessagePanel = ({
       addLog(`Sending message to ${selectedChat.name || selectedChat.id}...`);
 
       // ✅ Optimistic update (langsung muncul hijau)
-      const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
-        body: message,
-        from: "me",
-        to: selectedChat.id,
-        fromMe: true,
-      };
+      // const tempMessage: Message = {
+      //   id: `temp-${Date.now()}`,
+      //   body: message,
+      //   from: "me",
+      //   to: selectedChat.id,
+      //   fromMe: true,
+      // };
 
-      setMessages((prev) => ({
-        ...prev,
-        [selectedChat.id]: [...(prev[selectedChat.id] || []), tempMessage],
-      }));
+      // setMessages((prev) => ({
+      //   ...prev,
+      //   [selectedChat.id]: [...(prev[selectedChat.id] || []), tempMessage],
+      // }));
 
       socket.emit('send-message', { to: selectedChat.id, message });
       setMessage('');
