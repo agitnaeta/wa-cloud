@@ -38,7 +38,7 @@ app.prepare().then(() => {
     }),
     puppeteer: {
       headless: true,
-      // executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
+      executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
