@@ -105,11 +105,6 @@ export default function Home() {
     socket.on('message', (newMessage: Message) => {
       let chatId = newMessage.fromMe ? newMessage.to : newMessage.from
 
-      // paksa sync ke chat yang lagi dibuka
-      if (selectedChatRef.current?.id) {
-        chatId = selectedChatRef.current.id
-      }
-
       setMessages((prev) => ({
         ...prev,
         [chatId]: [...(prev[chatId] || []), newMessage],
@@ -299,7 +294,9 @@ const MessagePanel = ({
             {msg.type === 'location' ? (
               <div className="flex flex-col items-start">
                 {msg.hasMedia && msg.media && msg.media.mimetype.startsWith('image/') && (
+                  
                   <img
+                   src={`data:image/jpeg;base64,${base64String}`}
                     src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
                     alt="Location thumbnail"
                     className="rounded-lg max-w-xs cursor-pointer"
