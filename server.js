@@ -38,7 +38,7 @@ app.prepare().then(() => {
     }),
     puppeteer: {
       headless: true,
-      executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
+      // executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -148,12 +148,18 @@ app.prepare().then(() => {
      // kirim chat list kalau diminta
   socket.on('get-chats', async () => {
     try {
-      const chats = await client.getChats();
-      socket.emit('chats', chats.map(chat => ({
-        id: chat.id._serialized,
-        name: chat.name,
-        isGroup: chat.isGroup,
-      })));
+      if(client!== undefined){
+        const chats = await client.getChats();
+        socket.emit('chats', chats.map(chat => ({
+          id: chat.id._serialized,
+          name: chat.name,
+          isGroup: chat.isGroup,
+        })));
+      }
+      else{
+        socket.emit('chats', []);
+      }
+     
     } catch (err) {
       console.error("Error fetching chats:", err);
       socket.emit('chats', []);

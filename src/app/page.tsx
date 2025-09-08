@@ -23,10 +23,21 @@ interface Message {
   to: string
   fromMe: boolean
   media?: Media | null
+  type?: string
+  hasMedia?: boolean
+  location?: {
+    latitude: number
+    longitude: number
+    description?: string
+  }
 }
 
 interface MessagesMap {
   [chatId: string]: Message[]
+}
+
+interface UnreadCount {
+  [chatId: string]: number
 }
 
 interface ChatsEvent {
@@ -44,6 +55,7 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([])
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<MessagesMap>({})
+  const [unreadCounts, setUnreadCounts] = useState<UnreadCount>({})
 
   // 🔑 ref supaya listener socket bisa tau chat terbaru
   const selectedChatRef = useRef<Chat | null>(null)
@@ -53,6 +65,22 @@ export default function Home() {
 
   const addLog = (log: string) =>
     setLogs((prevLogs) => [`[${new Date().toLocaleTimeString()}] ${log}`, ...prevLogs])
+
+  // Function to mark chat as read
+  const markChatAsRead = (chatId: string) => {
+    setUnreadCounts(prev => ({
+      ...prev,
+      [chatId]: 0
+    }))
+  }
+
+  // Function to increment unread count
+  const incrementUnreadCount = (chatId: string) => {
+    setUnreadCounts(prev => ({
+      ...prev,
+      [chatId]: (prev[chatId] || 0) + 1
+    }))
+  }
 
   // --- Socket.IO Event Listeners ---
   useEffect(() => {
@@ -109,6 +137,12 @@ export default function Home() {
         ...prev,
         [chatId]: [...(prev[chatId] || []), newMessage],
       }))
+
+      // Only increment unread count for incoming messages (not from me)
+      // and only if the chat is not currently selected
+      if (!newMessage.fromMe && selectedChatRef.current?.id !== chatId) {
+        incrementUnreadCount(chatId)
+      }
     })
 
     // Pesan keluar yang udah dikonfirmasi server
@@ -133,6 +167,11 @@ export default function Home() {
       addLog(`Fetching messages for ${selectedChat.name || selectedChat.id}...`)
       socket?.emit('get-messages', selectedChat.id)
     }
+    
+    // Mark chat as read when selected
+    if (selectedChat) {
+      markChatAsRead(selectedChat.id)
+    }
   }, [selectedChat, messages])
 
   if (isLocked) return <Lock setIsLocked={setIsLocked} />
@@ -151,6 +190,7 @@ export default function Home() {
               key={chat.id}
               chat={chat}
               selectedChat={selectedChat}
+              unreadCount={unreadCounts[chat.id] || 0}
               onSelect={setSelectedChat}
             />
           ))}
@@ -203,10 +243,12 @@ const QRCodeDisplay = ({ qrCode, logs }: { qrCode: string; logs: string[] }) => 
 const ChatListItem = ({
   chat,
   selectedChat,
+  unreadCount,
   onSelect,
 }: {
   chat: Chat
   selectedChat: Chat | null
+  unreadCount: number
   onSelect: (chat: Chat) => void
 }) => (
   <div
@@ -218,9 +260,14 @@ const ChatListItem = ({
     <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex-shrink-0 flex items-center justify-center">
       {chat.isGroup ? '👥' : '👤'}
     </div>
-    <div className="w-full overflow-hidden">
+    <div className="flex-1 overflow-hidden">
       <p className="font-semibold truncate">{chat.name || chat.id.split('@')[0] || 'Unknown'}</p>
     </div>
+    {unreadCount > 0 && (
+      <div className="bg-green-500 text-white rounded-full min-w-[20px] h-5 flex items-center justify-center text-xs font-medium px-1.5 ml-2">
+        {unreadCount > 99 ? '99+' : unreadCount}
+      </div>
+    )}
   </div>
 )
 
@@ -294,28 +341,26 @@ const MessagePanel = ({
             {msg.type === 'location' ? (
               <div className="flex flex-col items-start">
                 {msg.hasMedia && msg.media && msg.media.mimetype.startsWith('image/') && (
-                  
                   <img
-                   src={`data:image/jpeg;base64,${base64String}`}
                     src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
                     alt="Location thumbnail"
                     className="rounded-lg max-w-xs cursor-pointer"
                     onClick={() =>
                       window.open(
-                        `https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`,
+                        `https://www.google.com/maps?q=${msg.location?.latitude},${msg.location?.longitude}`,
                         '_blank',
                       )
                     }
                   />
                 )}
                 <a
-                  href={`https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`}
+                  href={`https://www.google.com/maps?q=${msg.location?.latitude},${msg.location?.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-green-600 underline mt-1"
                 >
-                  📍 {msg.location.latitude}, {msg.location.longitude}
-                  {msg.location.description ? ` - ${msg.location.description}` : ''}
+                  📍 {msg.location?.latitude}, {msg.location?.longitude}
+                  {msg.location?.description ? ` - ${msg.location.description}` : ''}
                 </a>
               </div>
             ) : msg.media ? (

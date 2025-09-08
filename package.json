@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.19",
     "baileys": "^6.7.19",
     "child_process": "^1.0.2",
     "dotenv": "^17.2.2",
