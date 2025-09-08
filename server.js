@@ -97,12 +97,20 @@ app.prepare().then(() => {
       webpush.sendNotification(sub, payload).catch((err) => console.error(err));
     });
 
-    const mediaData = await msg.downloadMedia();
-    const media = {
-      mimetype: mediaData.mimetype,
-      data: mediaData.data, // base64
-      filename: mediaData.filename || null,
-    };
+     let media = null;
+        if (msg.hasMedia) {
+          try {
+            const mediaData = await msg.downloadMedia();
+            media = {
+              mimetype: mediaData.mimetype,
+              data: mediaData.data, // base64
+              filename: mediaData.filename || null,
+            };
+          } catch (err) {
+            console.error("Error downloading media:", err);
+          }
+        }
+
 
     io.emit('message', {
       from: msg.from,
