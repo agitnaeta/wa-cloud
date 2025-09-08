@@ -85,7 +85,7 @@ app.prepare().then(() => {
     console.error("⚠️ Client was logged out:", reason);
   });
 
-  client.on('message', (msg) => {
+  client.on('message', async (msg) => {
     console.log(`💬 New message from ${msg.from}: ${msg.body}`);
 
     const payload = JSON.stringify({
@@ -97,6 +97,13 @@ app.prepare().then(() => {
       webpush.sendNotification(sub, payload).catch((err) => console.error(err));
     });
 
+    const mediaData = await msg.downloadMedia();
+    const media = {
+      mimetype: mediaData.mimetype,
+      data: mediaData.data, // base64
+      filename: mediaData.filename || null,
+    };
+
     io.emit('message', {
       from: msg.from,
       to: msg.to,
@@ -104,6 +111,7 @@ app.prepare().then(() => {
       id: msg.id.id,
       fromMe: msg.fromMe,
       ack: msg.ack,
+      media
     });
   });
 
@@ -187,7 +195,7 @@ app.prepare().then(() => {
       }
     });
 
-    socket.on('get-messages', async (chatId) => {
+  socket.on('get-messages', async (chatId) => {
   try {
     const chat = await client.getChatById(chatId);
     const messages = await chat.fetchMessages({ limit: 20 });

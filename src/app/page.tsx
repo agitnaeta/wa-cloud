@@ -131,8 +131,9 @@ export default function Home() {
 
     // Pesan masuk dari WA
     socket.on('message', (newMessage: Message) => {
-      let chatId = newMessage.fromMe ? newMessage.to : newMessage.from
+      const chatId = newMessage.fromMe ? newMessage.to : newMessage.from
 
+      console.log(newMessage.hasMedia)
       setMessages((prev) => ({
         ...prev,
         [chatId]: [...(prev[chatId] || []), newMessage],
