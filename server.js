@@ -38,7 +38,8 @@ app.prepare().then(() => {
     }),
     puppeteer: {
       headless: true,
-      executablePath: '/usr/bin/chromium-browser', // ganti sesuai hasil which
+      
+      executablePath: '/snap/bin/chromium', // ganti sesuai hasil which
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -48,6 +49,8 @@ app.prepare().then(() => {
         '--no-zygote',
         '--single-process',
         '--disable-gpu',
+        '--user-data-dir=/tmp/chrome-data',
+        '--disable-features=HttpsFirstBalancedModeAutoEnable'
       ],
     },
   });
