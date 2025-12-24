@@ -38,8 +38,7 @@ app.prepare().then(() => {
     }),
     puppeteer: {
       headless: true,
-      
-      executablePath: '/snap/bin/chromium', // ganti sesuai hasil which
+      // executablePath: '/usr/bin/google-chrome-stable', // ganti sesuai hasil which
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -148,6 +147,13 @@ app.prepare().then(() => {
 
     socket.on("check-session", async () => {
       try {
+        // Check if client is initialized
+        if(!client || !client.pupPage) {
+          socket.emit("session_exists", false);
+          socket.emit("log", "WhatsApp client not initialized yet");
+          return;
+        }
+        
         const state = await client.getState();
     
         if (state === "CONNECTED") {
@@ -160,28 +166,41 @@ app.prepare().then(() => {
           socket.emit("session_exists", false);
         }
       } catch (err) {
+        console.error("Error checking session:", err);
         socket.emit("session_exists", false);
+        socket.emit("log", `Session check error: ${err.message}`);
       }
     });
 
      // kirim chat list kalau diminta
   socket.on('get-chats', async () => {
     try {
-      if(client!== undefined){
+      // Check if client is initialized and ready
+      if(!client || !client.pupPage) {
+        socket.emit('chats', []);
+        socket.emit('log', 'WhatsApp client not initialized yet');
+        return;
+      }
+      
+      const state = await client.getState();
+      if(state === 'CONNECTED'){
         const chats = await client.getChats();
         socket.emit('chats', chats.map(chat => ({
           id: chat.id._serialized,
           name: chat.name,
           isGroup: chat.isGroup,
         })));
+        socket.emit('log', `Found ${chats.length} chats`);
       }
       else{
         socket.emit('chats', []);
+        socket.emit('log', `Client state: ${state}, not ready yet`);
       }
      
     } catch (err) {
       console.error("Error fetching chats:", err);
       socket.emit('chats', []);
+      socket.emit('log', `Error fetching chats: ${err.message}`);
     }
   });
 

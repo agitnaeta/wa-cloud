@@ -47,15 +47,33 @@ interface ChatsEvent {
 
 let socket: Socket | null = null
 
+const getProgressWidth = (stage: string): string => {
+  switch (stage) {
+    case 'Initializing...': return '20%'
+    case 'Checking existing session...': return '40%'
+    case 'Starting new session...': return '60%'
+    case 'QR Code ready - Please scan': return '80%'
+    case 'Authenticated - Loading chats...': return '90%'
+    case 'Session restored - Loading chats...': return '90%'
+    case 'Client ready - Loading chats...': return '95%'
+    default: return '30%'
+  }
+}
+
 export default function Home() {
   const [qrCode, setQrCode] = useState<string>('')
   const [isLocked, setIsLocked] = useState<boolean>(true)
   const [isReady, setIsReady] = useState<boolean>(false)
+  const [loadingStage, setLoadingStage] = useState<string>('Initializing...')
+  const [hasError, setHasError] = useState<boolean>(false)
   const [logs, setLogs] = useState<string[]>([])
   const [chats, setChats] = useState<Chat[]>([])
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<MessagesMap>({})
   const [unreadCounts, setUnreadCounts] = useState<UnreadCount>({})
+  
+  // Timeout ref to detect stuck loading
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // 🔑 ref supaya listener socket bisa tau chat terbaru
   const selectedChatRef = useRef<Chat | null>(null)
@@ -85,28 +103,65 @@ export default function Home() {
   // --- Socket.IO Event Listeners ---
   useEffect(() => {
     socket = io()
+    
+    // Set timeout for loading detection
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (!isReady && !qrCode) {
+        setHasError(true)
+        setLoadingStage('Connection timeout - Check server logs')
+        addLog('Loading timeout detected - server may not be responding')
+      }
+    }, 30000) // 30 second timeout
 
     socket.on('connect', () => {
       addLog('Socket connected!')
+      setLoadingStage('Checking existing session...')
       socket?.emit('check-session') // minta status session
       socket?.emit('get-chats')
+    })
+    
+    socket.on('disconnect', () => {
+      addLog('Socket disconnected!')
+      setLoadingStage('Connection lost - Reconnecting...')
+    })
+    
+    socket.on('connect_error', (error) => {
+      addLog(`Connection error: ${error.message}`)
+      setHasError(true)
+      setLoadingStage('Connection failed')
     })
 
     socket.on('qr', (qr: string) => {
       setQrCode(qr)
       setIsReady(false)
+      setHasError(false)
+      setLoadingStage('QR Code ready - Please scan')
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+      }
     })
 
     socket.on('authenticated', () => {
       setIsReady(true)
+      setHasError(false)
+      setLoadingStage('Authenticated - Loading chats...')
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+      }
     })
 
     socket.on('session_exists', (exists: boolean) => {
       if (exists) {
         setIsReady(true)
+        setHasError(false)
+        setLoadingStage('Session restored - Loading chats...')
         addLog('Session already exists, client ready!')
         socket?.emit('get-chats')
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current)
+        }
       } else {
+        setLoadingStage('Starting new session...')
         addLog('No active session yet, waiting for ready/authenticated...')
         // jangan setIsReady(false) di sini biar gak nutup UI
       }
@@ -114,8 +169,13 @@ export default function Home() {
 
     socket.on('ready', () => {
       setIsReady(true)
+      setHasError(false)
+      setLoadingStage('Client ready - Loading chats...')
       addLog('Client is ready!')
       socket?.emit('get-chats')
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+      }
     })
 
     socket.on('log', (log: string) => addLog(log))
@@ -159,6 +219,9 @@ export default function Home() {
 
     return () => {
       socket?.disconnect()
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -176,14 +239,22 @@ export default function Home() {
   }, [selectedChat, messages])
 
   if (isLocked) return <Lock setIsLocked={setIsLocked} />
-  if (!isReady) return <QRCodeDisplay qrCode={qrCode} logs={logs} />
+  if (!isReady) return <QRCodeDisplay qrCode={qrCode} logs={logs} loadingStage={loadingStage} hasError={hasError} onRetry={() => window.location.reload()} />
 
   return (
     <div className="flex h-screen font-sans text-gray-800">
       {/* Left Panel: Chat List */}
-      <div className="w-[30%] border-r border-gray-200 flex flex-col bg-white">
-        <header className="p-4 border-b border-gray-200">
+      <div className={`${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[30%] border-r border-gray-200 flex-col bg-white`}>
+        <header className="p-4 border-b border-gray-200 flex justify-between items-center">
           <h1 className="text-xl font-semibold">Chats</h1>
+          {selectedChat && (
+            <button
+              onClick={() => setSelectedChat(null)}
+              className="md:hidden text-gray-600 hover:text-gray-800"
+            >
+              ✕
+            </button>
+          )}
         </header>
         <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => (
@@ -196,19 +267,20 @@ export default function Home() {
             />
           ))}
         </div>
-        <div className="h-40 overflow-y-auto">
+        <div className="h-40 overflow-y-auto hidden md:block">
           <LogPanel logs={logs} />
         </div>
       </div>
 
       {/* Right Panel: Messages */}
-      <div className="w-[70%] flex flex-col">
+      <div className={`${selectedChat ? 'flex' : 'hidden md:flex'} w-full md:w-[70%] flex-col`}>
         {selectedChat ? (
           <MessagePanel
             selectedChat={selectedChat}
             messages={messages[selectedChat.id] || []}
             setMessages={setMessages}
             addLog={addLog}
+            onBack={() => setSelectedChat(null)}
           />
         ) : (
           <WelcomeScreen />
@@ -219,23 +291,60 @@ export default function Home() {
 }
 
 // --- Sub-Components ---
-const QRCodeDisplay = ({ qrCode, logs }: { qrCode: string; logs: string[] }) => (
-  <div className="flex flex-col items-center justify-center h-screen bg-gray-50">
-    <div className="p-8 bg-white rounded-lg shadow-lg text-center">
-      <h2 className="text-2xl font-semibold mb-4 text-gray-700">Scan QR Code to Connect</h2>
+const QRCodeDisplay = ({ qrCode, logs, loadingStage, hasError, onRetry }: { qrCode: string; logs: string[]; loadingStage: string; hasError: boolean; onRetry: () => void }) => (
+  <div className="flex flex-col items-center justify-center h-screen bg-gray-50 p-4">
+    <div className="p-6 md:p-8 bg-white rounded-lg shadow-lg text-center max-w-sm md:max-w-md w-full">
+      <h2 className="text-xl md:text-2xl font-semibold mb-4 text-gray-700">Scan QR Code to Connect</h2>
       {qrCode ? (
         <img
           src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
             qrCode,
-          )}&size=300x300`}
+          )}&size=250x250`}
           alt="QR Code"
-          className="mx-auto"
+          className="mx-auto w-full max-w-[250px]"
         />
+      ) : hasError ? (
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+            <span className="text-red-600 text-2xl">⚠️</span>
+          </div>
+          <p className="text-red-600 font-medium">{loadingStage}</p>
+          <div className="text-sm text-gray-600 max-w-xs">
+            <p>The WhatsApp client failed to initialize. This could be due to:</p>
+            <ul className="text-left mt-2 space-y-1">
+              <li>• Browser/Chromium not found on server</li>
+              <li>• Server configuration issues</li>
+              <li>• Network connectivity problems</li>
+            </ul>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button 
+              onClick={onRetry}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Retry Connection
+            </button>
+            <button 
+              onClick={() => window.open('/logs', '_blank')}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              View Logs
+            </button>
+          </div>
+        </div>
       ) : (
-        <p className="text-gray-500">Loading QR Code...</p>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-16 h-16 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
+          <p className="text-gray-600">{loadingStage}</p>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="bg-green-600 h-2 rounded-full transition-all duration-500" 
+                 style={{width: getProgressWidth(loadingStage)}}></div>
+          </div>
+          <p className="text-sm text-gray-500">This may take a few moments</p>
+        </div>
       )}
     </div>
-    <div className="w-full max-w-4xl mt-8">
+    <div className="w-full max-w-4xl mt-4 md:mt-8 hidden md:block">
       <LogPanel logs={logs} />
     </div>
   </div>
@@ -253,19 +362,19 @@ const ChatListItem = ({
   onSelect: (chat: Chat) => void
 }) => (
   <div
-    className={`flex items-center p-4 cursor-pointer hover:bg-gray-100 ${
+    className={`flex items-center p-4 cursor-pointer hover:bg-gray-100 active:bg-gray-200 transition-colors ${
       selectedChat?.id === chat.id ? 'bg-gray-100' : ''
     }`}
     onClick={() => onSelect(chat)}
   >
-    <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex-shrink-0 flex items-center justify-center">
+    <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex-shrink-0 flex items-center justify-center text-lg">
       {chat.isGroup ? '👥' : '👤'}
     </div>
     <div className="flex-1 overflow-hidden">
-      <p className="font-semibold truncate">{chat.name || chat.id.split('@')[0] || 'Unknown'}</p>
+      <p className="font-semibold truncate text-base">{chat.name || chat.id.split('@')[0] || 'Unknown'}</p>
     </div>
     {unreadCount > 0 && (
-      <div className="bg-green-500 text-white rounded-full min-w-[20px] h-5 flex items-center justify-center text-xs font-medium px-1.5 ml-2">
+      <div className="bg-green-500 text-white rounded-full min-w-[24px] h-6 flex items-center justify-center text-sm font-medium px-2 ml-2">
         {unreadCount > 99 ? '99+' : unreadCount}
       </div>
     )}
@@ -284,11 +393,13 @@ const MessagePanel = ({
   messages,
   setMessages,
   addLog,
+  onBack,
 }: {
   selectedChat: Chat
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<MessagesMap>>
   addLog: (log: string) => void
+  onBack: () => void
 }) => {
   const [message, setMessage] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -324,17 +435,23 @@ const MessagePanel = ({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <header className="p-4 border-b border-gray-200 flex items-center bg-white flex-shrink-0">
+        <button
+          onClick={onBack}
+          className="md:hidden mr-3 p-2 text-gray-600 hover:text-gray-800"
+        >
+          ← Back
+        </button>
         <div className="w-10 h-10 bg-gray-300 rounded-full mr-4 flex items-center justify-center">
           {selectedChat.isGroup ? '👥' : '👤'}
         </div>
-        <h3 className="font-semibold">{selectedChat.name || selectedChat.id}</h3>
+        <h3 className="font-semibold truncate">{selectedChat.name || selectedChat.id}</h3>
       </header>
 
-      <div className="flex-1 p-6 overflow-y-auto bg-gray-50 flex flex-col space-y-2 min-h-0">
+      <div className="flex-1 p-4 md:p-6 overflow-y-auto bg-gray-50 flex flex-col space-y-3 min-h-0">
         {messages.map((msg, index) => (
           <div
             key={msg.id || index}
-            className={`max-w-xs md:max-w-md p-3 rounded-lg break-words ${
+            className={`max-w-[85%] md:max-w-md p-3 md:p-4 rounded-lg break-words ${
               msg.fromMe ? 'self-end bg-green-100' : 'self-start bg-white shadow-sm'
             }`}
           >
@@ -429,21 +546,22 @@ const MessagePanel = ({
 
       <form
         onSubmit={sendMessage}
-        className="p-4 bg-white border-t border-gray-200 flex items-center flex-shrink-0"
+        className="p-4 bg-white border-t border-gray-200 flex items-center flex-shrink-0 gap-2"
       >
         <input
           type="text"
           placeholder="Type a message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="flex-1 px-4 py-2 mr-4 bg-gray-100 border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="flex-1 px-4 py-3 bg-gray-100 border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 text-base"
         />
         <button
           type="submit"
-          className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600"
+          className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed min-w-[48px] min-h-[48px] flex items-center justify-center"
           disabled={!message.trim()}
         >
-          Send
+          <span className="hidden sm:inline">Send</span>
+          <span className="sm:hidden">➤</span>
         </button>
       </form>
     </div>
