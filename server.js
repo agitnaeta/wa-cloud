@@ -2,7 +2,6 @@
 require('dotenv').config();
 
 const { createServer } = require('http');
-const webpush = require('web-push');
 const { parse } = require('url');
 const next = require('next');
 const { Server } = require("socket.io");
@@ -11,14 +10,6 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
-
-webpush.setVapidDetails(
-  'mailto:lolo@sample.com',
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
-
-let subscriptions = [];
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -90,15 +81,6 @@ app.prepare().then(() => {
   client.on('message', async (msg) => {
     console.log(`💬 New message from ${msg.from}: ${msg.body}`);
 
-    const payload = JSON.stringify({
-      title: 'New WhatsApp Message',
-      body: `${msg.from}: ${msg.body}`,
-    });
-
-    subscriptions.forEach((sub) => {
-      webpush.sendNotification(sub, payload).catch((err) => console.error(err));
-    });
-
      let media = null;
         if (msg.hasMedia) {
           try {
@@ -139,11 +121,6 @@ app.prepare().then(() => {
   io.on('connection', (socket) => {
     console.log("🔌 Client connected via socket:", socket.id);
 
-    socket.on("subscribe", (sub) => {
-      subscriptions.push(sub);
-      socket.emit("log", "Push subscription added!");
-      console.log("📡 New subscription received:", sub.endpoint);
-    });
 
     socket.on("check-session", async () => {
       try {
